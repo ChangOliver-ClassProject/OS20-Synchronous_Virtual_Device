@@ -26,63 +26,67 @@ int main (int argc, char* argv[])
 	int N;
 
 	N = atoi(argv[1]);
-	strcpy(file_name, argv[2]);
-	strcpy(method, argv[3]);
-	strcpy(ip, argv[4]);
-	
+	strcpy(method, argv[argc-2]);
+	strcpy(ip, argv[argc-1]);
+
 	if( (dev_fd = open("/dev/slave_device", O_RDWR)) < 0)//should be O_RDWR for PROT_WRITE when mmap()
 	{
 		perror("failed to open /dev/slave_device\n");
 		return 1;
 	}
 	gettimeofday(&start ,NULL);
-	if( (file_fd = open (file_name, O_RDWR | O_CREAT | O_TRUNC)) < 0)
-	{
-		perror("failed to open input file\n");
-		return 1;
-	}
 
-	if(ioctl(dev_fd, 0x12345677, ip) == -1)	//0x12345677 : connect to master in the device
-	{
-		perror("ioctl create slave socket error\n");
-		return 1;
-	}
+	for (int i = 0; i < N; i++) {
+		if( (file_fd = open(argv[2+i], O_RDWR | O_CREAT | O_TRUNC)) < 0)
+		{
+			fprintf(stderr, "file: %s\n", argv[2+i]);
+			perror("failed to open input file\n");
+			return 1;
+		}
 
-    write(1, "ioctl success\n", 14);
+		if(ioctl(dev_fd, 0x12345677, ip) == -1)	//0x12345677 : connect to master in the device
+		{
+			perror("ioctl create slave socket error\n");
+			return 1;
+		}
 
-	switch(method[0])
-	{
-		case 'f'://fcntl : read()/write()
-			do
-			{
-				ret = read(dev_fd, buf, sizeof(buf)); // read from the the device
-				write(file_fd, buf, ret); //write to the input file
-				file_size += ret;
-			}while(ret > 0);
-			break;
-		case 'm':
-			while(ret = ioctl(dev_fd, 0x12345678) > 0){
-				if(posix_fallocate(file_fd, offset, ret) != 0){
-					perror("posix_fallocate error");
-					return 1;
+	    write(1, "ioctl success\n", 14);
+
+		switch(method[0])
+		{
+			case 'f'://fcntl : read()/write()
+				do
+				{
+					ret = read(dev_fd, buf, sizeof(buf)); // read from the the device
+					write(file_fd, buf, ret); //write to the input file
+					file_size += ret;
+				}while(ret > 0);
+				break;
+			case 'm':
+				while(ret = ioctl(dev_fd, 0x12345678) > 0){
+					if(posix_fallocate(file_fd, offset, ret) != 0){
+						perror("posix_fallocate error");
+						return 1;
+					}
+					file_address = mmap(NULL, ret, PROT_WRITE, MAP_SHARED, file_fd, offset);
+					kernel_address = mmap(NULL, ret, PROT_READ, MAP_SHARED, dev_fd, offset);
+					memcpy(file_address, kernel_address, ret);
+					offset += ret;
 				}
-				file_address = mmap(NULL, ret, PROT_WRITE, MAP_SHARED, file_fd, offset);
-				kernel_address = mmap(NULL, ret, PROT_READ, MAP_SHARED, dev_fd, offset);
-				memcpy(file_address, kernel_address, ret);
-				offset += ret;
-			}
-			file_size = offset;
-			//munmap(dst, mmap_size);
-			break;
+				file_size = offset;
+				//munmap(dst, mmap_size);
+				break;
+		}
+
+
+
+		if(ioctl(dev_fd, 0x12345679) == -1)// end receiving data, close the connection
+		{
+			perror("ioclt client exits error\n");
+			return 1;
+		}
 	}
 
-
-
-	if(ioctl(dev_fd, 0x12345679) == -1)// end receiving data, close the connection
-	{
-		perror("ioclt client exits error\n");
-		return 1;
-	}
 	gettimeofday(&end, NULL);
 	trans_time = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)*0.0001;
 	printf("Transmission time: %lf ms, File size: %d bytes\n", trans_time, file_size / 8);
