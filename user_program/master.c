@@ -11,7 +11,7 @@
 
 #define PAGE_SIZE 4096
 #define BUF_SIZE 512
-#define MAP_SIZE PAGE_SIZE * 128
+#define MAP_SIZE PAGE_SIZE * 1
 size_t get_filesize(const char* filename);//get the size of the input file
 
 
@@ -26,13 +26,10 @@ int main (int argc, char* argv[])
 	struct timeval end;
 	double trans_time; //calulate the time between the device is opened and it is closed
 	int N;
-	char n;
 
-	strcpy(n, argv[1]);
-	N = atoi(n);
+	N = atoi(argv[1]);
 	strcpy(file_name, argv[2]);
 	strcpy(method, argv[3]);
-
 
 	if( (dev_fd = open("/dev/master_device", O_RDWR)) < 0)
 	{
@@ -70,22 +67,50 @@ int main (int argc, char* argv[])
 			}while(ret > 0);
 			break;
 		case 'm':
+
 			while(offset < file_size){
+
 				size_t len = MAP_SIZE;
+
 				if(file_size - offset < len){
 					len = file_size - offset;
 				}
-				if(file_address = mmap(NULL, len, PROT_READ, MAP_SHARED, file_fd, offset) < 0){
+
+				if(file_address = mmap(NULL, len, PROT_READ, MAP_SHARED, file_fd, offset) == MAP_FAILED){
 					perror("mapping input file");
                     return 1;
 				}
-				if(kernel_address = mmap(NULL, len, PROT_WRITE, MAP_SHARED, dev_fd, offset) < 0){
+			
+				if(kernel_address = mmap(NULL, len, PROT_WRITE, MAP_SHARED, dev_fd, offset) == MAP_FAILED){
 					perror("mapping output file");
                     return 1;
 				}
+				printf("while OK\n");
+				fflush(stdout);
+				do {
+                    int l = (offset + BUF_SIZE > file_size ? file_size % BUF_SIZE : BUF_SIZE);             
+                    memcpy(kernel_address, file_address, l);
+                    printf("do_while OK\n");
+					fflush(stdout); 
+                    offset += l;
+                    ioctl(dev_fd, 0x12345678, l);
+                } while (offset < file_size && offset % PAGE_SIZE != 0);
+
+
+				printf("OK\n");
+				fflush(stdout);
+				printf("%x\n", file_address);
+				printf("%x\n", kernel_address);
+				fflush(stdout);
+
 				memcpy(kernel_address, file_address, len);
+
+				printf("OK\n");
+				fflush(stdout);				
 				offset += len;
 				ioctl(dev_fd, 0x12345678, len);
+				printf("OK\n");
+				fflush(stdout);				
 				munmap(file_address, len);
 			}
 			break;	

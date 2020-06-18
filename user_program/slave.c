@@ -24,10 +24,8 @@ int main (int argc, char* argv[])
 	double trans_time; //calulate the time between the device is opened and it is closed
 	char *kernel_address, *file_address;
 	int N;
-	char n;
 
-	strcpy(n, argv[1]);
-	N = n - '0';
+	N = atoi(argv[1]);
 	strcpy(file_name, argv[2]);
 	strcpy(method, argv[3]);
 	strcpy(ip, argv[4]);
