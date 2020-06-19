@@ -14,6 +14,9 @@
 #define MAP_SIZE PAGE_SIZE * 1
 size_t get_filesize(const char* filename);//get the size of the input file
 
+size_t min(const size_t a, const size_t b) {
+	return a < b ? a : b;
+}
 
 int main (int argc, char* argv[]) {
 	char buf[BUF_SIZE];
@@ -29,13 +32,18 @@ int main (int argc, char* argv[]) {
 	N = atoi(argv[1]);
 	strcpy(method, argv[argc-1]);
 
-	if( (dev_fd = open("/dev/master_device", O_RDWR)) < 0) {
-		perror("failed to open /dev/master_device\n");
-		return 1;
-	}
 	gettimeofday(&start ,NULL);
-	for (int i = 0; i < N; i++) {
 
+	for (int i = 0; i < N; i++) {
+		if((dev_fd = open("/dev/master_device", O_RDWR)) < 0) {
+			perror("failed to open /dev/master_device\n");
+			return 1;
+		}
+		if(ioctl(dev_fd, 0x12345677) == -1) { //0x12345677 : create socket and accept the connection from the slave 
+			perror("ioctl server create socket error\n");
+			return 1;
+		}
+		offset = 0;
 		if((file_fd = open(argv[2+i], O_RDWR)) < 0) {
 			perror("failed to open input file\n");
 			return 1;
@@ -47,12 +55,6 @@ int main (int argc, char* argv[]) {
 		}
 		total_size += file_size;
 
-		if(ioctl(dev_fd, 0x12345677) == -1) { //0x12345677 : create socket and accept the connection from the slave 
-			perror("ioctl server create socket error\n");
-			return 1;
-		}
-
-
 		switch(method[0]) {
 			case 'f': //fcntl : read()/write()
 				do {
@@ -60,68 +62,41 @@ int main (int argc, char* argv[]) {
 					write(dev_fd, buf, ret);//write to the the device
 				} while(ret > 0);
 				break;
-			case 'm':
-				while(offset < file_size) {
+			case 'm': //mmap
+	            while (offset < file_size) {
+					size_t transfer_size = min(MAP_SIZE, file_size - offset);
+	                // printf("transfer_size : %lu\n", transfer_size);
 
-					size_t len = MAP_SIZE;
+	                if((file_address = mmap(NULL, transfer_size, PROT_READ, MAP_SHARED, file_fd, offset)) == MAP_FAILED) {
+	                    perror("mapping input file");
+	                    return 1;
+	                }
+	                if((kernel_address = mmap(NULL, transfer_size, PROT_WRITE, MAP_SHARED, dev_fd, offset)) == MAP_FAILED) {
+	                    perror("mapping output device");
+	                    return 1;
+	                }
 
-					if(file_size - offset < len) {
-						len = file_size - offset;
-					}
-
-					if(file_address = mmap(NULL, len, PROT_READ, MAP_SHARED, file_fd, offset) == MAP_FAILED) {
-						perror("mapping input file");
-		                return 1;
-					}
-				
-					if(kernel_address = mmap(NULL, len, PROT_WRITE, MAP_SHARED, dev_fd, offset) == MAP_FAILED) {
-						perror("mapping output file");
-		                return 1;
-					}
-					printf("while OK\n");
-					fflush(stdout);
-					do {
-		                int l = (offset + BUF_SIZE > file_size ? file_size % BUF_SIZE : BUF_SIZE);             
-		                memcpy(kernel_address, file_address, l);
-		                printf("do_while OK\n");
-						fflush(stdout); 
-		                offset += l;
-		                ioctl(dev_fd, 0x12345678, l);
-		            } while (offset < file_size && offset % PAGE_SIZE != 0);
-
-
-					printf("OK\n");
-					fflush(stdout);
-					printf("%x\n", file_address);
-					printf("%x\n", kernel_address);
-					fflush(stdout);
-
-					memcpy(kernel_address, file_address, len);
-
-					printf("OK\n");
-					fflush(stdout);				
-					offset += len;
-					ioctl(dev_fd, 0x12345678, len);
-					printf("OK\n");
-					fflush(stdout);				
-					munmap(file_address, len);
-				}
-				break;	
+	                memcpy(kernel_address, file_address, transfer_size);
+	                offset += transfer_size;
+	                ioctl(dev_fd, 0x12345678, transfer_size);
+	                ioctl(dev_fd, 0x12345676, (unsigned long)file_address);
+	                munmap(file_address, transfer_size);
+	            }
+	            break;
 		}
-
 		if(ioctl(dev_fd, 0x12345679) == -1) { // end sending data, close the connection
 			perror("ioctl server exits error\n");
 			return 1;
 		}
-
+		close(dev_fd);
+		close(file_fd);
 	}
+
 	
+
 	gettimeofday(&end, NULL);
 	trans_time = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)*0.0001;
 	printf("Transmission time: %lf ms, File size: %lu bytes\n", trans_time, total_size / 8);
-
-	close(file_fd);
-	close(dev_fd);
 
 	return 0;
 }
