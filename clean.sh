@@ -10,3 +10,11 @@ cd ../ksocket
 make clean
 rmmod ksocket.ko
 
+cd ../output/sample_output_1
+rm -f *
+cd ../sample_output_2
+rm -f *
+cd ../sample_output_3
+rm -f *
+
+

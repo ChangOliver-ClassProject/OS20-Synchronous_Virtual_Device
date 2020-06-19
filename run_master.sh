@@ -8,5 +8,3 @@ echo Running sample 2
 ./master 1 ../input/sample_input_2/target_file mmap
 echo Running sample 3
 ./master 1 ../input/sample_input_3/newdata.txt mmap
-cd ..
-./clean.sh
