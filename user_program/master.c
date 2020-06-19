@@ -15,11 +15,10 @@
 size_t get_filesize(const char* filename);//get the size of the input file
 
 
-int main (int argc, char* argv[])
-{
+int main (int argc, char* argv[]) {
 	char buf[BUF_SIZE];
 	int i, dev_fd, file_fd;// the fd for the device and the fd for the input file
-	size_t ret, file_size, offset = 0, tmp;
+	size_t ret, file_size, total_size = 0, offset = 0;
 	char file_name[50] = {0}, method[20] = {0};
 	char *kernel_address = NULL, *file_address = NULL;
 	struct timeval start;
@@ -30,59 +29,52 @@ int main (int argc, char* argv[])
 	N = atoi(argv[1]);
 	strcpy(method, argv[argc-1]);
 
-	if( (dev_fd = open("/dev/master_device", O_RDWR)) < 0)
-	{
+	if( (dev_fd = open("/dev/master_device", O_RDWR)) < 0) {
 		perror("failed to open /dev/master_device\n");
 		return 1;
 	}
 	gettimeofday(&start ,NULL);
 	for (int i = 0; i < N; i++) {
 
-		if( (file_fd = open (argv[2+i], O_RDWR)) < 0 )
-		{
+		if((file_fd = open(argv[2+i], O_RDWR)) < 0) {
 			perror("failed to open input file\n");
 			return 1;
 		}
 
-		if( (file_size = get_filesize(argv[2+i])) < 0)
-		{
+		if((file_size = get_filesize(argv[2+i])) < 0) {
 			perror("failed to get filesize\n");
 			return 1;
 		}
+		total_size += file_size;
 
-
-		if(ioctl(dev_fd, 0x12345677) == -1) //0x12345677 : create socket and accept the connection from the slave
-		{
+		if(ioctl(dev_fd, 0x12345677) == -1) { //0x12345677 : create socket and accept the connection from the slave 
 			perror("ioctl server create socket error\n");
 			return 1;
 		}
 
 
-		switch(method[0])
-		{
+		switch(method[0]) {
 			case 'f': //fcntl : read()/write()
-				do
-				{
+				do {
 					ret = read(file_fd, buf, sizeof(buf)); // read from the input file
 					write(dev_fd, buf, ret);//write to the the device
-				}while(ret > 0);
+				} while(ret > 0);
 				break;
 			case 'm':
-
-				while(offset < file_size){
+				while(offset < file_size) {
 
 					size_t len = MAP_SIZE;
 
-					if(file_size - offset < len){
+					if(file_size - offset < len) {
 						len = file_size - offset;
 					}
 
-					if(file_address = mmap(NULL, len, PROT_READ, MAP_SHARED, file_fd, offset) == MAP_FAILED){
+					if(file_address = mmap(NULL, len, PROT_READ, MAP_SHARED, file_fd, offset) == MAP_FAILED) {
 						perror("mapping input file");
 		                return 1;
 					}
 				
-					if(kernel_address = mmap(NULL, len, PROT_WRITE, MAP_SHARED, dev_fd, offset) == MAP_FAILED){
+					if(kernel_address = mmap(NULL, len, PROT_WRITE, MAP_SHARED, dev_fd, offset) == MAP_FAILED) {
 						perror("mapping output file");
 		                return 1;
 					}
@@ -117,8 +109,7 @@ int main (int argc, char* argv[])
 				break;	
 		}
 
-		if(ioctl(dev_fd, 0x12345679) == -1) // end sending data, close the connection
-		{
+		if(ioctl(dev_fd, 0x12345679) == -1) { // end sending data, close the connection
 			perror("ioctl server exits error\n");
 			return 1;
 		}
@@ -127,7 +118,7 @@ int main (int argc, char* argv[])
 	
 	gettimeofday(&end, NULL);
 	trans_time = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)*0.0001;
-	printf("Transmission time: %lf ms, File size: %d bytes\n", trans_time, file_size / 8);
+	printf("Transmission time: %lf ms, File size: %lu bytes\n", trans_time, total_size / 8);
 
 	close(file_fd);
 	close(dev_fd);
@@ -135,8 +126,7 @@ int main (int argc, char* argv[])
 	return 0;
 }
 
-size_t get_filesize(const char* filename)
-{
+size_t get_filesize(const char* filename) {
     struct stat st;
     stat(filename, &st);
     return st.st_size;
