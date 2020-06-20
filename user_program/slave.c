@@ -11,6 +11,11 @@
 
 #define PAGE_SIZE 4096
 #define BUF_SIZE 512
+
+void printDmesg(int dev_fd, const unsigned long file_address) {
+	ioctl(dev_fd, 0x12345676, file_address);
+}
+
 int main (int argc, char* argv[])
 {
 	char buf[BUF_SIZE];
@@ -29,28 +34,28 @@ int main (int argc, char* argv[])
 	strcpy(method, argv[argc-2]);
 	strcpy(ip, argv[argc-1]);
 
-	if( (dev_fd = open("/dev/slave_device", O_RDWR)) < 0) {//should be O_RDWR for PROT_WRITE when mmap()
+	if((dev_fd = open("/dev/slave_device", O_RDWR)) < 0) {//should be O_RDWR for PROT_WRITE when mmap()
 		perror("failed to open /dev/slave_device\n");
 		return 1;
 	}
 	gettimeofday(&start ,NULL);
-
 	for (int i = 0; i < N; i++) {
-		if( (file_fd = open(argv[2+i], O_RDWR | O_CREAT | O_TRUNC)) < 0) {
+		offset = 0;
+		file_size = 0;
+
+		if((file_fd = open(argv[2+i], O_RDWR | O_CREAT | O_TRUNC)) < 0) {
 			fprintf(stderr, "file: %s\n", argv[2+i]);
 			perror("failed to open input file\n");
 			return 1;
 		}
-
 		if(ioctl(dev_fd, 0x12345677, ip) == -1) {	//0x12345677 : connect to master in the device
 			perror("ioctl create slave socket error\n");
 			return 1;
 		}
-
-	    write(1, "ioctl success\n", 14);
-
+	
+		long mmap_size = sysconf(_SC_PAGE_SIZE);
 		switch(method[0]) {
-			case 'f'://fcntl : read()/write()
+			case 'f': //fcntl : read()/write()
 				do {
 					ret = read(dev_fd, buf, sizeof(buf)); // read from the the device
 					write(file_fd, buf, ret); //write to the input file
@@ -58,52 +63,39 @@ int main (int argc, char* argv[])
 				} while(ret > 0);
 				break;
 			case 'm':
-				while(ret = ioctl(dev_fd, 0x12345678) > 0) {
-					if(posix_fallocate(file_fd, offset, ret) != 0) {
-						perror("posix_fallocate error");
-						return 1;
+				while ((ret = read(dev_fd, buf, sizeof(buf))) > 0) {
+					if (file_size % mmap_size == 0) {
+						ftruncate(file_fd, file_size + mmap_size);
+						if (file_size != 0) {
+							printDmesg(file_fd, (unsigned long)file_address);
+							munmap(file_address, mmap_size);
+						}
+						if((file_address = mmap(NULL, mmap_size, PROT_READ | PROT_WRITE, MAP_SHARED, file_fd, file_size)) == MAP_FAILED) {
+							perror("mapping output file");
+							return 1;
+						}
 					}
-					file_address = mmap(NULL, ret, PROT_WRITE, MAP_SHARED, file_fd, offset);
-					kernel_address = mmap(NULL, ret, PROT_READ, MAP_SHARED, dev_fd, offset);
-					memcpy(file_address, kernel_address, ret);
-					offset += ret;
-				}
-				file_size = offset;
-				//munmap(dst, mmap_size);
+					memcpy(&file_address[file_size % mmap_size], buf, ret);
+					file_size += ret;
+				};
+				ftruncate(file_fd, file_size);
+				
+				printDmesg(file_fd, (unsigned long)file_address);
+				munmap(file_address, mmap_size);
 				break;
 		}
 
 		total_size += file_size;
-
 		if(ioctl(dev_fd, 0x12345679) == -1) { // end receiving data, close the connection
 			perror("ioclt client exits error\n");
 			return 1;
 		}
-	}
 
+		close(file_fd);
+	}
+	close(dev_fd);
 	gettimeofday(&end, NULL);
 	trans_time = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)*0.0001;
-	printf("Transmission time: %lf ms, File size: %lu bytes\n", trans_time, total_size / 8);
-
-	int output_fd;
-	char output_path[50] = {0};
-	sprintf(output_path, "../output/sample_output_%c/fcntl_result.txt", argv[2][24]);
-	printf("%s\n", output_path);
-	if ((output_fd = open(output_path, O_RDWR | O_CREAT | O_TRUNC)) < 0) {
-		fprintf(stderr, "file: %s\n", output_path);
-		perror("failed to open output file\n");
-		return 1;
-	}
-
-
-	char output_msg[128] = {0};
-	sprintf(output_msg, "Transmission time: %lf ms, File size: %lu bytes\n", trans_time, total_size / 8);
-	write(output_fd, output_msg, strlen(output_msg)); //write to the input file
-
-	close(output_fd);
-	close(file_fd);
-	close(dev_fd);
+	printf("Transmission time: %lf ms, File size: %lu bytes\n", trans_time, total_size);
 	return 0;
 }
-
-

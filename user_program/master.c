@@ -8,14 +8,24 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/time.h>
+#include <stdlib.h>
 
 #define PAGE_SIZE 4096
 #define BUF_SIZE 512
 #define MAP_SIZE PAGE_SIZE * 1
-size_t get_filesize(const char* filename);//get the size of the input file
+
+size_t get_filesize(const char* filename) {
+    struct stat st;
+    stat(filename, &st);
+    return st.st_size;
+}
 
 size_t min(const size_t a, const size_t b) {
 	return a < b ? a : b;
+}
+
+void printDmesg(int dev_fd, const unsigned long file_address) {
+	ioctl(dev_fd, 0x12345676, file_address);
 }
 
 int main (int argc, char* argv[]) {
@@ -32,13 +42,13 @@ int main (int argc, char* argv[]) {
 	N = atoi(argv[1]);
 	strcpy(method, argv[argc-1]);
 
-	gettimeofday(&start ,NULL);
+	if((dev_fd = open("/dev/master_device", O_RDWR)) < 0) {
+		perror("failed to open /dev/master_device\n");
+		return 1;
+	}
 
+	gettimeofday(&start ,NULL);
 	for (int i = 0; i < N; i++) {
-		if((dev_fd = open("/dev/master_device", O_RDWR)) < 0) {
-			perror("failed to open /dev/master_device\n");
-			return 1;
-		}
 		if(ioctl(dev_fd, 0x12345677) == -1) { //0x12345677 : create socket and accept the connection from the slave 
 			perror("ioctl server create socket error\n");
 			return 1;
@@ -65,7 +75,6 @@ int main (int argc, char* argv[]) {
 			case 'm': //mmap
 	            while (offset < file_size) {
 					size_t transfer_size = min(MAP_SIZE, file_size - offset);
-	                // printf("transfer_size : %lu\n", transfer_size);
 
 	                if((file_address = mmap(NULL, transfer_size, PROT_READ, MAP_SHARED, file_fd, offset)) == MAP_FAILED) {
 	                    perror("mapping input file");
@@ -75,11 +84,10 @@ int main (int argc, char* argv[]) {
 	                    perror("mapping output device");
 	                    return 1;
 	                }
-
 	                memcpy(kernel_address, file_address, transfer_size);
 	                offset += transfer_size;
 	                ioctl(dev_fd, 0x12345678, transfer_size);
-	                ioctl(dev_fd, 0x12345676, (unsigned long)file_address);
+	                printDmesg(dev_fd, (unsigned long)file_address);
 	                munmap(file_address, transfer_size);
 	            }
 	            break;
@@ -88,21 +96,13 @@ int main (int argc, char* argv[]) {
 			perror("ioctl server exits error\n");
 			return 1;
 		}
-		close(dev_fd);
 		close(file_fd);
 	}
-
-	
+	close(dev_fd);
 
 	gettimeofday(&end, NULL);
 	trans_time = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)*0.0001;
-	printf("Transmission time: %lf ms, File size: %lu bytes\n", trans_time, total_size / 8);
+	printf("Transmission time: %lf ms, File size: %lu bytes\n", trans_time, total_size);
 
 	return 0;
-}
-
-size_t get_filesize(const char* filename) {
-    struct stat st;
-    stat(filename, &st);
-    return st.st_size;
 }
