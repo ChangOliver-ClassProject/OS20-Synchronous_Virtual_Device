@@ -44,7 +44,7 @@ int main (int argc, char* argv[])
 		offset = 0;
 		file_size = 0;
 
-		if((file_fd = open(argv[2+i], O_RDWR | O_CREAT | O_TRUNC)) < 0) {
+		if((file_fd = open(argv[2+i], O_RDWR | O_CREAT | O_TRUNC, S_IRWXU)) < 0) {
 			fprintf(stderr, "file: %s\n", argv[2+i]);
 			perror("failed to open input file\n");
 			return 1;
@@ -92,17 +92,12 @@ int main (int argc, char* argv[])
 			return 1;
 		}
 
-		// ../output/sample_output_1/target_file_1 ../output/sample_output_1/target_file_2
-
-		char cmd[512] = {0};
-		sprintf(cmd, "cp ../input/sample_input_%c/* ../output/sample_output_%c", argv[2][24], argv[2][24]);
-		system(cmd);
-
 		close(file_fd);
 	}
 	close(dev_fd);
 	gettimeofday(&end, NULL);
 	trans_time = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)*0.0001;
 	printf("Transmission time: %lf ms, File size: %lu bytes\n", trans_time, total_size);
+
 	return 0;
 }
