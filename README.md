@@ -16,7 +16,7 @@ user_program : the user program "master" and "slave".
     ./slave 1 file1_out fcntl 127.0.0.1 
     ```
     
-+ For reproducing our result:
-  1. change to super user.  
-  2. simply execute "./run_master.sh" to compile and start the master program
-  3. exceute "./run_slave.sh" to start the slave program
++ For reproducing our result:  
+  1.change to super user.  
+  2.simply execute "./run_master.sh" to compile and start the master program.  
+  3.exceute "./run_slave.sh" to start the slave program.  
