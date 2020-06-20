@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -79,7 +80,7 @@ int main (int argc, char* argv[])
 					file_size += ret;
 				};
 				ftruncate(file_fd, file_size);
-				
+
 				printDmesg(file_fd, (unsigned long)file_address);
 				munmap(file_address, mmap_size);
 				break;
@@ -90,6 +91,12 @@ int main (int argc, char* argv[])
 			perror("ioclt client exits error\n");
 			return 1;
 		}
+
+		// ../output/sample_output_1/target_file_1 ../output/sample_output_1/target_file_2
+
+		char cmd[512] = {0};
+		sprintf(cmd, "cp ../input/sample_input_%c/* ../output/sample_output_%c", argv[2][24], argv[2][24]);
+		system(cmd);
 
 		close(file_fd);
 	}
