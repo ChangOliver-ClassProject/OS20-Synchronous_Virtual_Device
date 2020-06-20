@@ -16,4 +16,3 @@ echo Sending sample 2 with mmap I/O
 ./master 1 ../input/sample_input_2/target_file mmap
 echo Sending sample 3 with mmap I/O
 ./master 1 ../input/sample_input_3/newdata.txt mmap
-./clean.sh
